@@ -7,6 +7,8 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 
+import net.floodlightcontroller.traceroute.Switch.Color;
+
 import org.json.JSONException;
 
 public class TwoNodeColoring {
@@ -27,7 +29,7 @@ public class TwoNodeColoring {
 		Map.Entry<String, Switch> pairs = (Map.Entry<String, Switch>) it1
 				.next();
 		Switch s = pairs.getValue();
-		s.setColor('B');
+		s.setColor(Color.BLACK);
 
 		dfs(G, s);
 
@@ -79,10 +81,10 @@ public class TwoNodeColoring {
 			Switch s = pair2.getValue();
 			String pmac = s.getMac();
 			if (map_mac_to_visited.get(pmac).equals(false)) {
-				if (src.getColor() == 'B')
-					s.setColor('W');
+				if (src.getColor() == Color.BLACK)
+					s.setColor(Color.BLACK);
 				else
-					s.setColor('B');
+					s.setColor(Color.WHITE);
 
 				// System.out.println("MAC---" +s.getMac());
 				// System.out.println("Color --" +s.getColor());
@@ -108,8 +110,9 @@ public class TwoNodeColoring {
 			Switch s = pair2.getValue();
 			String pmac = s.getMac();
 			if (map_mac_to_visited.get(pmac).equals(false)) {
-				if (src.getColor() == 'W' && s.getColor() == 'W')
-					s.setColor('B');
+				if (src.getColor() == Color.WHITE
+						&& s.getColor() == Color.WHITE)
+					s.setColor(Color.BLACK);
 			}
 
 		}

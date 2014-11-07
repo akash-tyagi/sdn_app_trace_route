@@ -1,42 +1,42 @@
-
 package net.floodlightcontroller.traceroute;
 
 import java.util.HashMap;
 import java.util.LinkedList;
 
-class Switch
-{
-	public char color;
+class Switch {
+	public enum Color {
+		NOCOLOR, WHITE, BLACK
+	};
+
+	public Color color;
 	public String MAC;
 	public HashMap hm = new HashMap<Integer, Switch>();
-	public LinkedList adj_object =  new LinkedList();
-	
-	public Switch(){
-		color='\0';
-		MAC="";
+	public LinkedList adj_object = new LinkedList();
+
+	public Switch() {
+		color = Color.NOCOLOR;
+		MAC = "";
 	}
-	public void setMac(String s)
-	{
-		MAC=s;
+
+	public void setMac(String s) {
+		MAC = s;
 	}
-	
-	public char getColor() {
+
+	public Color getColor() {
 		return color;
 	}
-	
-	public void setColor(char color) {
+
+	public void setColor(Color color) {
 		this.color = color;
 	}
-	public String getMac()
-	{
-	   return MAC;
+
+	public String getMac() {
+		return MAC;
 	}
-	
+
 	@Override
-	public String toString(){
+	public String toString() {
 		return ("Mac is - " + MAC);
 	}
-	
-	
-}
 
+}
