@@ -32,6 +32,7 @@ import org.openflow.protocol.Wildcards.Flag;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
+import org.openflow.util.HexString;
 import org.openflow.util.U16;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +54,8 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 
 	protected Map<Integer, Long> ipToSwitchId;
 	protected Map<Long, Map<Integer, HostInfo>> switchToHostsInfo;
-	protected static Map<Switch, IOFSwitch> switchToIOFSwitchMap;
+	// protected static Map<Switch, IOFSwitch> switchToIOFSwitchMap;
+	protected static Map<IOFSwitch, Switch> IOFSwitchToSwitchMap;
 	protected static Map<String, String> hostMacToSwitchMacMap;
 
 	@Override
@@ -100,20 +102,40 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 		ipToSwitchId = new HashMap<>();
 		switchToHostsInfo = new HashMap<>();
 		logger = LoggerFactory.getLogger(TraceRoute.class);
-		switchToIOFSwitchMap = new ConcurrentHashMap<Switch, IOFSwitch>();
+		// switchToIOFSwitchMap = new ConcurrentHashMap<Switch, IOFSwitch>();
 		hostMacToSwitchMacMap = new ConcurrentHashMap<String, String>();
+
+		// Graph g = new Graph();
+		// g.initializeTopology();
+		//
+		// TwoNodeColoring b = new TwoNodeColoring();
+		// b.StartTwoNodeColoring(g);
+
 	}
 
 	@Override
 	public void startUp(FloodlightModuleContext context)
 			throws FloodlightModuleException {
 		floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
+		/*
+		 * Graph g = new Graph(); g.initializeTopology();
+		 * 
+		 * TwoNodeColoring b = new TwoNodeColoring(); b.StartTwoNodeColoring(g);
+		 */
+
 	}
 
 	@Override
 	public net.floodlightcontroller.core.IListener.Command receive(
 			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
 		logger.info("--------------------------------------------------------");
+
+		/*
+		 * Graph g = new Graph(); g.initializeTopology();
+		 * 
+		 * TwoNodeColoring b = new TwoNodeColoring(); b.StartTwoNodeColoring(g);
+		 */
+
 		switch (msg.getType()) {
 		case PACKET_IN:
 			logger.info("PacketIn Path...");
@@ -127,8 +149,13 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 
 	private net.floodlightcontroller.core.IListener.Command processPacketInMessage(
 			IOFSwitch iofSwitch, OFPacketIn msg, FloodlightContext cntx) {
-		
-		
+
+		Graph g = new Graph();
+		g.initializeTopology();
+
+		TwoNodeColoring b = new TwoNodeColoring(g);
+//		b.StartTwoNodeColoring(g);
+
 		System.out.println("-----------------------------Count:" + count++);
 		OFPacketIn pi = (OFPacketIn) msg;
 		// parse the data in packetIn using match
@@ -146,20 +173,25 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 
 		if (match.getDataLayerType() == Ethernet.TYPE_IPv4
 				&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
-			// String dpid = HexString.toHexString(iofSwitch.getId());
-			// String sMac = HexString.toHexString(sourceMACHash);
-			// System.out.println("dpid:" + dpid + " mac:" + sMac);
-			// Switch swtch = Graph.mac_to_switch_object.get(dpid);
-			// if (swtch == null) {
-			// System.out.println("WTF!!!!!!!!!!!!!!!!!!!");
-			// }
-			// if (!switchToIOFSwitchMap.containsValue(iofSwitch)) {
-			// switchToIOFSwitchMap.put(swtch, iofSwitch);
-			// }
-			//
-			// if (!hostMacToSwitchMacMap.containsKey(sMac)) {
-			// hostMacToSwitchMacMap.put(sMac, dpid);
-			// }
+			String dpid = HexString.toHexString(iofSwitch.getId());
+			String sMac = HexString.toHexString(sourceMACHash);
+			System.out.println("dpid:" + dpid + " mac:" + sMac);
+			Switch swtch = Graph.mac_to_switch_object.get(dpid);
+			System.out.print("hurray" + swtch.getColor());
+			if (swtch == null) {
+				System.out.println("WTF!!!!!!!!!!!!!!!!!!!");
+			}
+			/*
+			 * if (!switchToIOFSwitchMap.containsValue(iofSwitch)) {
+			 * switchToIOFSwitchMap.put(swtch, iofSwitch); }
+			 */
+			if (!IOFSwitchToSwitchMap.containsKey(iofSwitch)) {
+				IOFSwitchToSwitchMap.put(iofSwitch, swtch);
+			}
+
+			if (!hostMacToSwitchMacMap.containsKey(sMac)) {
+				hostMacToSwitchMacMap.put(sMac, dpid);
+			}
 		}
 
 		// If sourceIP is discovered for the first time, store in map
@@ -184,7 +216,8 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 			// If dest IP is already discovered then install the forward and
 			// reverse rules
 			if (switchToHostsInfo.get(swId).containsKey(destIP)
-					&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
+					&& (match.getDataLayerType() == Ethernet.TYPE_ARP)) {
+
 				OFMatch reverseMatch = match
 						.clone()
 						.setDataLayerSource(match.getDataLayerDestination())
@@ -226,6 +259,21 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 					installRule(iofSwitch, reverseMatch, actions, len);
 				}
 
+			} else if (switchToHostsInfo.get(swId).containsKey(destIP)
+					&& match.getDataLayerType() == Ethernet.TYPE_IPv4
+					&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
+				String dpid = HexString.toHexString(iofSwitch.getId());
+				Switch swtch = Graph.mac_to_switch_object.get(dpid);
+				if (swtch.getColor() == Color.WHITE) {
+
+				} else if (swtch.getColor() == Color.BLACK) {
+
+				} else {
+					System.out
+							.println("SOMETHING WRONGGGGGGGGGGGGGGGGGGGGGGGGGG BITCHESSSSSSSSSSSSSSSSSSSSS");
+				}
+				System.out.print("hurray" + swtch.getColor());
+
 			}
 
 		}
@@ -254,9 +302,8 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 		// order is important
 		int len = len2;
 		ArrayList<OFAction> actions = new ArrayList<OFAction>();
-		 OFActionVirtualLanIdentifier action = new
-		 OFActionVirtualLanIdentifier();
-		 action.setVirtualLanIdentifier((short) (Math.random() * 4));
+		OFActionVirtualLanIdentifier action = new OFActionVirtualLanIdentifier();
+		action.setVirtualLanIdentifier((short) (Math.random() * 4));
 		actions.addAll(actions2);
 
 		OFAction outputTo = new OFActionOutput(outPort);
