@@ -15,7 +15,11 @@ public class TwoNodeColoring {
 	// private Map mac_to_switch_object;
 	public Map<String, Boolean> map_mac_to_visited = new HashMap<String, Boolean>();
 
-	public TwoNodeColoring(Graph G) {
+	public TwoNodeColoring() {
+		// TODO Auto-generated constructor stub
+	}
+
+	public void StartTwoNodeColoring(Graph G) {
 
 		Iterator it = Graph.mac_to_switch_object.keySet().iterator();
 		while (it.hasNext()) {
@@ -82,9 +86,12 @@ public class TwoNodeColoring {
 			String pmac = s.getMac();
 			if (map_mac_to_visited.get(pmac).equals(false)) {
 				if (src.getColor() == Color.BLACK)
-					s.setColor(Color.BLACK);
-				else
+					// s.setColor(Color.BLACK);
+					// else
+					// s.setColor(Color.WHITE);
 					s.setColor(Color.WHITE);
+				else
+					s.setColor(Color.BLACK);
 
 				// System.out.println("MAC---" +s.getMac());
 				// System.out.println("Color --" +s.getColor());
@@ -204,7 +211,7 @@ public class TwoNodeColoring {
 			// g.print_adj_list(dst);
 		}
 
-		TwoNodeColoring b = new TwoNodeColoring(g);
+		// TwoNodeColoring b = new TwoNodeColoring(g);
 
 	}
 

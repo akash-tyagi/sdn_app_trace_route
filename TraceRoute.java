@@ -153,8 +153,8 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 		Graph g = new Graph();
 		g.initializeTopology();
 
-		TwoNodeColoring b = new TwoNodeColoring(g);
-//		b.StartTwoNodeColoring(g);
+		TwoNodeColoring b = new TwoNodeColoring();
+		b.StartTwoNodeColoring(g);
 
 		System.out.println("-----------------------------Count:" + count++);
 		OFPacketIn pi = (OFPacketIn) msg;

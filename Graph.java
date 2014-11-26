@@ -1,3 +1,8 @@
+/*
+ * Copyright 2014, The Avengers
+ * @author - Anish Dubey
+ * */
+
 package net.floodlightcontroller.traceroute;
 
 import java.io.IOException;
@@ -23,7 +28,7 @@ class GraphException extends RuntimeException {
 // Represents an edge in the graph.
 class Edge {
 	public Vertex dest; // Second vertex in Edge
-	public double cost; // Edge cost, not currently used in the code
+	public double cost; // Edge cost
 
 	public Edge(Vertex d, double c) {
 		dest = d;
@@ -111,7 +116,7 @@ public class Graph {
 
 		// hm.put(port, destination);
 
-		HashMap<Integer, Switch> hm = new HashMap<Integer, Switch>();
+		HashMap hm = new HashMap<Integer, Switch>();
 
 		hm.put(port, destination);
 
