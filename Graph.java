@@ -1,8 +1,3 @@
-/*
- * Copyright 2014, The Avengers
- * @author - Anish Dubey
- * */
-
 package net.floodlightcontroller.traceroute;
 
 import java.io.IOException;
@@ -28,7 +23,7 @@ class GraphException extends RuntimeException {
 // Represents an edge in the graph.
 class Edge {
 	public Vertex dest; // Second vertex in Edge
-	public double cost; // Edge cost
+	public double cost; // Edge cost, not currently used in the code
 
 	public Edge(Vertex d, double c) {
 		dest = d;
@@ -116,7 +111,7 @@ public class Graph {
 
 		// hm.put(port, destination);
 
-		HashMap hm = new HashMap<Integer, Switch>();
+		HashMap<Integer, Switch> hm = new HashMap<Integer, Switch>();
 
 		hm.put(port, destination);
 
@@ -141,6 +136,73 @@ public class Graph {
 	}
 
 	public void initializeTopology() {
+		ParseJson P = new ParseJson();
+		try {
+			P.captureData();
+		} catch (IOException | JSONException e) {
+			e.printStackTrace();
+		}
+		int num_links = P.getNumLinks();
+
+		// System.out.println(L.get(i).toString());
+
+		int number_of_switches = P.getNumSwitch();
+		setswitches(number_of_switches);
+
+		ArrayList<Switch> S = new ArrayList<Switch>();
+		for (int i = 0; i < number_of_switches; i++) {
+			S.add(new Switch());
+		}
+
+		// Creating a Hash Map
+
+		int j = 0;
+		ArrayList<SwitchLinks> L = P.getLinks();
+		for (int i = 0; i < L.size(); i++) {
+			String Source = L.get(i).getSrcMac();
+			String Dest = L.get(i).getDestMac();
+			int srcPort = L.get(i).getSrcPort();
+			int destPort = L.get(i).getDestPort();
+			if (!mac_to_switch_object.containsKey(Source)) {
+				mac_to_switch_object.put(Source, S.get(j));
+				j = j + 1;
+			}
+			if (!mac_to_switch_object.containsKey(Dest)) {
+				mac_to_switch_object.put(Dest, S.get(j));
+				j = j + 1;
+			}
+			Switch src = mac_to_switch_object.get(Source);
+			Switch dst = mac_to_switch_object.get(Dest);
+			src.setMac(Source);
+			dst.setMac(Dest);
+			addEdge_object(src, dst, srcPort);
+			addEdge_object(dst, src, destPort);
+			// g.print_adj_list(src);
+			// g.print_adj_list(dst);
+
+		}
+
+		Iterator it = mac_to_switch_object.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<String, Switch> pair2 = (Map.Entry<String, Switch>) it
+					.next();
+			Switch s = pair2.getValue();
+			System.out.println("Printing adj list for " + s.getMac());
+			LinkedList l = getadjSwitch(s);
+			Iterator it2 = l.iterator();
+			while (it2.hasNext()) {
+				HashMap<String, Switch> pairs = (HashMap<String, Switch>) it2
+						.next();
+				Iterator it3 = pairs.entrySet().iterator();
+				Map.Entry<String, Switch> pair3 = (Map.Entry<String, Switch>) it3
+						.next();
+				Switch s2 = pair3.getValue();
+				String pmac = s2.getMac();
+				System.out.println("MAC---" + pmac);
+				// System.out.println("Color --" +s.getColor());
+
+			}
+		}
 
 	}
 

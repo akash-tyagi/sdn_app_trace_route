@@ -3,7 +3,7 @@ package net.floodlightcontroller.traceroute;
 import java.util.HashMap;
 import java.util.LinkedList;
 
-class Switch {
+public class Switch {
 	public enum Color {
 		NOCOLOR, WHITE, BLACK
 	};
