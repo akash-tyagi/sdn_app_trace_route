@@ -18,7 +18,6 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
-import net.floodlightcontroller.traceroute.Switch.Color;
 
 import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFMatch;
@@ -31,7 +30,6 @@ import org.openflow.protocol.Wildcards;
 import org.openflow.protocol.Wildcards.Flag;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
-import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
 import org.openflow.util.HexString;
 import org.openflow.util.U16;
 import org.slf4j.Logger;
@@ -43,8 +41,6 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 	protected static Logger logger;
 	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 60; // in seconds
 	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
-	protected static short VLANID_WHITE = -1;
-	protected static short VLANID_BLACK = 1;
 	private static int count = 0;
 
 	class HostInfo {
@@ -57,6 +53,7 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 	// protected static Map<Switch, IOFSwitch> switchToIOFSwitchMap;
 	protected static Map<IOFSwitch, Switch> IOFSwitchToSwitchMap;
 	protected static Map<String, String> hostMacToSwitchMacMap;
+	protected static boolean isColoringInitialized = false;
 
 	@Override
 	public String getName() {
@@ -150,13 +147,14 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 	private net.floodlightcontroller.core.IListener.Command processPacketInMessage(
 			IOFSwitch iofSwitch, OFPacketIn msg, FloodlightContext cntx) {
 
-		Graph g = new Graph();
-		g.initializeTopology();
+		if (!isColoringInitialized) {
+			Graph g = new Graph();
+			g.initializeTopology();
+			TwoNodeColoring b = new TwoNodeColoring();
+			b.StartTwoNodeColoring(g);
+			isColoringInitialized = true;
+		}
 
-		TwoNodeColoring b = new TwoNodeColoring();
-		b.StartTwoNodeColoring(g);
-
-		System.out.println("-----------------------------Count:" + count++);
 		OFPacketIn pi = (OFPacketIn) msg;
 		// parse the data in packetIn using match
 		OFMatch match = new OFMatch();
@@ -171,28 +169,28 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 				IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		Long sourceMACHash = Ethernet.toLong(eth.getSourceMACAddress());
 
-		if (match.getDataLayerType() == Ethernet.TYPE_IPv4
-				&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
-			String dpid = HexString.toHexString(iofSwitch.getId());
-			String sMac = HexString.toHexString(sourceMACHash);
-			System.out.println("dpid:" + dpid + " mac:" + sMac);
-			Switch swtch = Graph.mac_to_switch_object.get(dpid);
-			System.out.print("hurray" + swtch.getColor());
-			if (swtch == null) {
-				System.out.println("WTF!!!!!!!!!!!!!!!!!!!");
-			}
-			/*
-			 * if (!switchToIOFSwitchMap.containsValue(iofSwitch)) {
-			 * switchToIOFSwitchMap.put(swtch, iofSwitch); }
-			 */
-			if (!IOFSwitchToSwitchMap.containsKey(iofSwitch)) {
-				IOFSwitchToSwitchMap.put(iofSwitch, swtch);
-			}
-
-			if (!hostMacToSwitchMacMap.containsKey(sMac)) {
-				hostMacToSwitchMacMap.put(sMac, dpid);
-			}
-		}
+		// if (match.getDataLayerType() == Ethernet.TYPE_IPv4
+		// && match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
+		// String dpid = HexString.toHexString(iofSwitch.getId());
+		// String sMac = HexString.toHexString(sourceMACHash);
+		// System.out.println("dpid:" + dpid + " mac:" + sMac);
+		// Switch swtch = Graph.mac_to_switch_object.get(dpid);
+		// System.out.print("hurray" + swtch.getColor());
+		// if (swtch == null) {
+		// System.out.println("WTF!!!!!!!!!!!!!!!!!!!");
+		// }
+		// /*
+		// * if (!switchToIOFSwitchMap.containsValue(iofSwitch)) {
+		// * switchToIOFSwitchMap.put(swtch, iofSwitch); }
+		// */
+		// if (!IOFSwitchToSwitchMap.containsKey(iofSwitch)) {
+		// IOFSwitchToSwitchMap.put(iofSwitch, swtch);
+		// }
+		//
+		// if (!hostMacToSwitchMacMap.containsKey(sMac)) {
+		// hostMacToSwitchMacMap.put(sMac, dpid);
+		// }
+		// }
 
 		// If sourceIP is discovered for the first time, store in map
 		if (!ipToSwitchId.containsKey(sourceIP)) {
@@ -200,8 +198,6 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 		}
 
 		if (destIP != 0) {
-			System.out.println("Get the VlanID:"
-					+ match.getDataLayerVirtualLan());
 			if (!switchToHostsInfo.containsKey(swId)) {
 				Map<Integer, HostInfo> map = new HashMap<>();
 				switchToHostsInfo.put(swId, map);
@@ -213,11 +209,12 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 				switchToHostsInfo.get(swId).put(sourceIP, info);
 			}
 
-			// If dest IP is already discovered then install the forward and
-			// reverse rules
+			// If dest IP is already discovered then install the rules
 			if (switchToHostsInfo.get(swId).containsKey(destIP)
-					&& (match.getDataLayerType() == Ethernet.TYPE_ARP)) {
-
+					&& (match.getDataLayerType() == Ethernet.TYPE_ARP || match
+							.getDataLayerType() == Ethernet.TYPE_IPv4
+							&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP)) {
+				installRule(iofSwitch, match);
 				OFMatch reverseMatch = match
 						.clone()
 						.setDataLayerSource(match.getDataLayerDestination())
@@ -227,97 +224,36 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 						.setInputPort(
 								switchToHostsInfo.get(iofSwitch.getId()).get(
 										match.getNetworkDestination()).port);
-				ArrayList<OFAction> actions = new ArrayList<OFAction>();
-				int len = 0;
-
-				// install normal rules for ARP
-				if (match.getDataLayerType() == Ethernet.TYPE_ARP) {
-					installRule(iofSwitch, match, actions, len);
-					installRule(iofSwitch, reverseMatch, actions, len);
-				}
-				// special rules based on white and black nodes
-				else if (match.getDataLayerType() == Ethernet.TYPE_IPv4) {
-					// Switch swtch = Graph.mac_to_switch_object.get(iofSwitch
-					// .getId());
-					// Color color = swtch.getColor();
-					// System.out.println("Color:" + color.toString());
-					//
-					// OFActionVirtualLanIdentifier action = new
-					// OFActionVirtualLanIdentifier();
-					// // For white, forward packet with vlan changes to -1
-					// if (color.equals(Color.WHITE)) {
-					// action.setVirtualLanIdentifier(VLANID_WHITE);
-					// } else if (color.equals(Color.BLACK)) {
-					// action.setVirtualLanIdentifier((short) 1);
-					// } else {
-					// System.out
-					// .println("Color not available on the node please check algorithm again");
-					// System.exit(1);
-					// }
-
-					installRule(iofSwitch, match, actions, len);
-					installRule(iofSwitch, reverseMatch, actions, len);
-				}
-
-			} else if (switchToHostsInfo.get(swId).containsKey(destIP)
-					&& match.getDataLayerType() == Ethernet.TYPE_IPv4
-					&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
-				String dpid = HexString.toHexString(iofSwitch.getId());
-				Switch swtch = Graph.mac_to_switch_object.get(dpid);
-				if (swtch.getColor() == Color.WHITE) {
-
-				} else if (swtch.getColor() == Color.BLACK) {
-
-				} else {
-					System.out
-							.println("SOMETHING WRONGGGGGGGGGGGGGGGGGGGGGGGGGG BITCHESSSSSSSSSSSSSSSSSSSSS");
-				}
-				System.out.print("hurray" + swtch.getColor());
-
+				installRule(iofSwitch, reverseMatch);
 			}
 
 		}
 		// Flood the packet
-		System.out.println("flooding-----");
 		this.pushPacket(iofSwitch, match, pi,
 				(short) OFPort.OFPP_FLOOD.getValue());
 		return Command.CONTINUE;
 	}
 
-	private void installRule(IOFSwitch sw, OFMatch match,
-			ArrayList<OFAction> actions2, int len2) {
+	private void installRule(IOFSwitch sw, OFMatch match) {
 		short outPort = switchToHostsInfo.get(sw.getId()).get(
 				match.getNetworkDestination()).port;
-		System.out.println("Output port:" + outPort);
-
-		match.setDataLayerVirtualLan((short) 3);
 
 		// create the rule
 		OFFlowMod rule = (OFFlowMod) floodlightProvider.getOFMessageFactory()
 				.getMessage(OFType.FLOW_MOD);
+		setBasicPropForRule(rule);
 		// set the Flow Removed bit
 		rule.setFlags(OFFlowMod.OFPFF_SEND_FLOW_REM);
 
 		// set of actions to apply to this rule
-		// order is important
-		int len = len2;
 		ArrayList<OFAction> actions = new ArrayList<OFAction>();
-		OFActionVirtualLanIdentifier action = new OFActionVirtualLanIdentifier();
-		action.setVirtualLanIdentifier((short) (Math.random() * 4));
-		actions.addAll(actions2);
-
 		OFAction outputTo = new OFActionOutput(outPort);
 		actions.add(outputTo);
-
-		len = OFActionOutput.MINIMUM_LENGTH
-				+ OFActionVirtualLanIdentifier.MINIMUM_LENGTH;
-		setBasicPropForRule(rule, len);
-
 		// If packet of type ICMP
 		if (match.getDataLayerType() == Ethernet.TYPE_IPv4) {
-			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_VLAN)
-					.matchOn(Flag.DL_TYPE).matchOn(Flag.IN_PORT)
-					.matchOn(Flag.NW_PROTO).withNwSrcMask(32).withNwDstMask(32));
+			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
+					.matchOn(Flag.IN_PORT).matchOn(Flag.NW_PROTO)
+					.withNwSrcMask(32).withNwDstMask(32));
 		}
 		// If packet of type ARP
 		else {
@@ -334,23 +270,21 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 
 		try {
 			sw.write(rule, null);
-			logger.info("Rule installation successfull From:"
-					+ match.getNetworkSource() + " to "
-					+ match.getNetworkDestination() + " on sw:" + sw.getId());
+			logger.info("Rule installation successfull");
 		} catch (Exception e) {
 			logger.error("Rule installation failed");
 			e.printStackTrace();
 		}
 	}
 
-	private void setBasicPropForRule(OFFlowMod rule, int len) {
+	private void setBasicPropForRule(OFFlowMod rule) {
 		rule.setCommand(OFFlowMod.OFPFC_ADD);
 		// specify timers for the life of the rule
 		rule.setIdleTimeout(TraceRoute.FLOWMOD_DEFAULT_IDLE_TIMEOUT);
 		rule.setHardTimeout(TraceRoute.FLOWMOD_DEFAULT_HARD_TIMEOUT);
 		rule.setBufferId(OFPacketOut.BUFFER_ID_NONE);
 		// specify the length of the flow structure created
-		rule.setLength((short) (OFFlowMod.MINIMUM_LENGTH + len));
+		rule.setLength((short) (OFFlowMod.MINIMUM_LENGTH + OFActionOutput.MINIMUM_LENGTH));
 	}
 
 	private void pushPacket(IOFSwitch sw, OFMatch match, OFPacketIn pi,
