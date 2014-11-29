@@ -250,16 +250,8 @@ public class TraceRoute implements IOFMessageListener, IFloodlightModule {
 		OFAction outputTo = new OFActionOutput(outPort);
 		actions.add(outputTo);
 		// If packet of type ICMP
-		if (match.getDataLayerType() == Ethernet.TYPE_IPv4) {
-			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-					.matchOn(Flag.IN_PORT).matchOn(Flag.NW_PROTO)
-					.withNwSrcMask(32).withNwDstMask(32));
-		}
-		// If packet of type ARP
-		else {
-			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-					.matchOn(Flag.IN_PORT).withNwSrcMask(32).withNwDstMask(32));
-		}
+		match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
+				.matchOn(Flag.IN_PORT).withNwSrcMask(32).withNwDstMask(32));
 		sendFlowMod(sw, rule, actions, match);
 	}
 
