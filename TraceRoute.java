@@ -203,8 +203,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			// If dest IP is already discovered then install the forward and
 			// reverse rules
 			if (switchToHostsInfo.get(swId).containsKey(destIP)) {
-				short outPort = switchToHostsInfo.get(iofSwitch.getId()).get(
-						match.getNetworkDestination()).port;
+
 				OFMatch reverseMatch = match
 						.clone()
 						.setDataLayerSource(match.getDataLayerDestination())
@@ -214,9 +213,13 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 						.setInputPort(
 								switchToHostsInfo.get(iofSwitch.getId()).get(
 										match.getNetworkDestination()).port);
+				short outPort = switchToHostsInfo.get(iofSwitch.getId()).get(
+						match.getNetworkDestination()).port;
+				short revOutPort = switchToHostsInfo.get(iofSwitch.getId())
+						.get(reverseMatch.getNetworkDestination()).port;
 				if (match.getDataLayerType() == Ethernet.TYPE_ARP) {
 					installRule(iofSwitch, match, outPort);
-					installRule(iofSwitch, reverseMatch, outPort);
+					installRule(iofSwitch, reverseMatch, revOutPort);
 				} else if (match.getDataLayerType() == Ethernet.TYPE_IPv4
 						&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
 
@@ -227,7 +230,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 					if (color.equals(Color.WHITE)) {
 						System.out.println("WHITE SWITCH-----");
 						installRule(iofSwitch, match, outPort);
-						installRule(iofSwitch, reverseMatch, outPort);
+						installRule(iofSwitch, reverseMatch, revOutPort);
 					} else if (color.equals(Color.BLACK)) {
 						System.out.println("BLACK SWITCH-----");
 						LinkedList<String> path = generatePath(iofSwitch, msg,
@@ -241,7 +244,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 								OFPort.OFPP_CONTROLLER.getValue());
 						installRule(iofSwitch, reverseMatch,
 								OFPort.OFPP_CONTROLLER.getValue());
-
+						System.out.println("Forwarding-----");
 						this.pushPacket(iofSwitch, match, pi, outPort);
 						return Command.CONTINUE;
 
@@ -403,21 +406,22 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 					flag = 1;
 			}
 		}
-
-		Color color = f_sw_append.getColor();
-		if (color.equals(Color.WHITE)) {
-			{
-
-				traceMap(id, dpid);
-			}
-
-			if (flag == 1) {
-				return (traceMap(id, dpid));
-			} else {
-				return null;
-			}
-		}
-		return null;
+		if (f_sw_append == null)
+			return null;
+		return traceMap(id, dpid);
+		// Color color = f_sw_append.getColor();
+		// if (color.equals(Color.WHITE)) {
+		// {
+		//
+		// return traceMap(id, dpid);
+		// }
+		// if (flag == 1) {
+		// return (traceMap(id, dpid));
+		// } else {
+		// return null;
+		// }
+		// }
+		// return null;
 
 	}
 
@@ -428,6 +432,8 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			if (pair.getKey().equals(id)) {
 				LinkedList l = (LinkedList) pair.getValue();
 				l.add(dpid);
+				System.out.println("ADDED:--------------------------------"
+						+ dpid);
 				return l;
 			}
 		}
