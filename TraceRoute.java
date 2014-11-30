@@ -44,7 +44,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 
 	protected IFloodlightProviderService floodlightProvider;
 	protected static Logger logger;
-	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 60; // in seconds
+	protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 6000; // in seconds
 	protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
 	private static int count = 0;
 	private static final short VLANID_WHITE = (short) -1;
@@ -57,7 +57,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		short port;
 	}
 
-	protected Map<Integer, Long> ipToSwitchId;
+	protected Map<Integer, String> ipToSwitchId;
 	protected Map<Long, Map<Integer, HostInfo>> switchToHostsInfo;
 	protected static Map<Switch, IOFSwitch> switchToIOFSwitchMap;
 	protected static Map<String, String> hostMacToSwitchMacMap;
@@ -116,7 +116,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		hostMacToSwitchMacMap = new ConcurrentHashMap<String, String>();
 		restApi = context.getServiceImpl(IRestApiService.class);
 		tracepath = new ConcurrentHashMap<String, LinkedList>();
-		mac_to_switch_object_copy = new HashMap<String, Switch>();
+		Map<String, Switch> mac_to_switch_object_copy = new HashMap<String, Switch>();
 	}
 
 	@Override
@@ -129,10 +129,10 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 	@Override
 	public net.floodlightcontroller.core.IListener.Command receive(
 			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
-		logger.info("--------------------------------------------------------");
+		// logger.info("--------------------------------------------------------");
 		switch (msg.getType()) {
 		case PACKET_IN:
-			logger.info("PacketIn Path...");
+			// logger.info("PacketIn Path...");
 			return processPacketInMessage(sw, (OFPacketIn) msg, cntx);
 		default:
 			break;
@@ -147,6 +147,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 
 		if (!isColoringInitialized) {
 			Graph g = new Graph();
+
 			g.initializeTopology();
 			mac_to_switch_object_copy = g.mac_to_switch_object;
 			TwoNodeColoring b = new TwoNodeColoring();
@@ -187,8 +188,12 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		}
 
 		// If sourceIP is discovered for the first time, store in map
+		// if (!ipToSwitchId.containsKey(sourceIP)) {
+		// ipToSwitchId.put(sourceIP, iofSwitch.getId());
+		// }
+
 		if (!ipToSwitchId.containsKey(sourceIP)) {
-			ipToSwitchId.put(sourceIP, iofSwitch.getId());
+			ipToSwitchId.put(sourceIP, iofSwitch.getStringId());
 		}
 
 		if (destIP != 0) {
@@ -234,20 +239,27 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 						System.out.println("WHITE SWITCH-----");
 						installRule(iofSwitch, match, outPort);
 						installRule(iofSwitch, reverseMatch, revOutPort);
+						this.pushPacket(iofSwitch, match, pi, outPort);
+						return Command.CONTINUE;
 					} else if (color.equals(Color.BLACK)) {
 						System.out.println("BLACK SWITCH-----");
-						LinkedList<String> path = generatePath(iofSwitch, msg,
-								outPort, eth);
-						if (path != null) {
-							for (int i = 0; i < path.size(); i++) {
-								System.out.print(path.get(i) + "--->");
-							}
-							System.out.println("\n");
-						}
+
 						installRule(iofSwitch, match,
 								OFPort.OFPP_CONTROLLER.getValue());
 						installRule(iofSwitch, reverseMatch,
 								OFPort.OFPP_CONTROLLER.getValue());
+
+						System.out.println("Generating path");
+						LinkedList<String> path = generatePath(iofSwitch, msg,
+								outPort, eth);
+						if (path != null) {
+							System.out.print("Hurray:");
+							for (int i = 0; i < path.size(); i++) {
+
+								System.out.print(path.get(i) + "-->");
+							}
+							System.out.println();
+						}
 						System.out.println("Forwarding-----");
 						this.pushPacket(iofSwitch, match, pi, outPort);
 						return Command.CONTINUE;
@@ -261,7 +273,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			}
 		}
 		// Flood the packet
-		System.out.println("flooding-----");
+		// System.out.println("flooding-----");
 		this.pushPacket(iofSwitch, match, pi,
 				(short) OFPort.OFPP_FLOOD.getValue());
 		return Command.CONTINUE;
@@ -374,23 +386,27 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		int destIP = match.getNetworkDestination();
 		int sourceIP = match.getNetworkSource();
 		Short inputPort = pi.getInPort();
+		long swId = iofSwitch.getId();
 
 		Iterator it2 = ipToSwitchId.entrySet().iterator();
 
-		Long dst_sw_id = (long) 0;
-		Long scr_sw_id = (long) 0;
+		String dst_sw_id = null;
+		String scr_sw_id = null;
 		while (it2.hasNext()) {
 			Map.Entry pairs = (Map.Entry) it2.next();
 			if (pairs.getKey().equals(destIP)) {
-				dst_sw_id = (Long) pairs.getValue();
+				dst_sw_id = (String) pairs.getValue();
+			}
+			if (pairs.getKey().equals(sourceIP)) {
+				scr_sw_id = (String) pairs.getValue();
 			}
 		}
 
 		IPv4 ip = (IPv4) eth.getPayload();
 		int ident1 = ip.getIdentification();
-		// String id = sourceIP + ":" + ident1;
+		String id = sourceIP + ":" + ident1 + ":" + destIP;
 
-		String id = sourceIP + "";
+		// String id = sourceIP + "";
 
 		String dpid = HexString.toHexString(iofSwitch.getId());
 		Switch swtch = Graph.mac_to_switch_object.get(dpid);
@@ -419,12 +435,15 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			if (pairs.getKey().equals((new Integer(outputPort)))) {
 				System.out.println("I entered into the object -2  ");
 				f_sw_end = (Switch) pairs.getValue();
-				if (f_sw_end.getMac().equals(dst_sw_id))
+				if (f_sw_end.getMac().equals(new String(dst_sw_id))) {
+					System.out.print("Setting flag as 1");
 					flag = 1;
+				}
 			}
 		}
 
-		if (swtch.getMac().equals(scr_sw_id)) {
+		if (swtch.getMac().equals(new String(scr_sw_id))) {
+			System.out.print("Did i come here");
 			traceMap(id, dpid, null);
 			return null;
 		}
@@ -434,23 +453,24 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			return null;
 
 		}
-
 		if (flag == 0) {
-			traceMap(id, dpid, f_sw_append);
-		} else {
+			return (traceMap(id, dpid, f_sw_append));
+		}
+
+		if (flag == 1) {
 			if (mac_to_switch_object_copy.containsKey(dst_sw_id)) {
 				Switch sw = mac_to_switch_object_copy.get(dst_sw_id);
 				if (sw.getColor().equals(Color.BLACK)) {
 					return (traceMap(id, dpid, f_sw_append));
-					//return null;
 				}
 			}
 			LinkedList l_new = new LinkedList();
 			l_new = traceMap(id, dpid, f_sw_append);
 			l_new.add(dst_sw_id);
 			return l_new;
+		} else {
+			return null;
 		}
-		return null;
 	}
 
 	public LinkedList<String> traceMap(String id, String dpid, Switch neighbour) {
@@ -464,20 +484,34 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			Map.Entry pair = (Map.Entry) it.next();
 			if (pair.getKey().equals(id)) {
 				LinkedList l = (LinkedList) pair.getValue();
-				if (neighbour.getColor().equals(Color.WHITE)) {// point 3
+
+				if (neighbour.getColor().equals(Color.BLACK)) {// point 3
 					System.out.println("Entering point 3");
+					System.out.print("----3-----");
+					l.add(dpid);
+					return l;
+				} else {
+					System.out.print("----4-----");
 					l.add(neighbour.getMac());
+					l.add(dpid);
+					System.out
+							.println("ADDED: point 4--------------------------------"
+									+ neighbour.getMac() + "       " + dpid);
+					return l;
 				}
-				l.add(dpid);
-				return l;
 			}
 		}
 		LinkedList<String> path = new LinkedList<String>();
-		if (neighbour != null) {// point 1
-			System.out.print("----6-----");
+		if (neighbour == null) {// point 1
+								// System.out.print("------");
+			System.out.println("Entering point 1");
+			path.add(dpid);
+		} else {// point 2
+			System.out.print("----5-----");
+			System.out.println("Entering point 2");
 			path.add(neighbour.getMac());
+			path.add(dpid);
 		}
-		path.add(dpid);
 		tracepath.put(id, path);
 		return path;
 	}
