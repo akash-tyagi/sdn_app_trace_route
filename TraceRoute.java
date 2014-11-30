@@ -33,7 +33,6 @@ import org.openflow.protocol.Wildcards;
 import org.openflow.protocol.Wildcards.Flag;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
-import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
 import org.openflow.util.HexString;
 import org.openflow.util.U16;
 import org.slf4j.Logger;
@@ -215,6 +214,8 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			// If dest IP is already discovered then install the forward and
 			// reverse rules
 			if (switchToHostsInfo.get(swId).containsKey(destIP)) {
+				short outPort = switchToHostsInfo.get(iofSwitch.getId()).get(
+						match.getNetworkDestination()).port;
 				OFMatch reverseMatch = match
 						.clone()
 						.setDataLayerSource(match.getDataLayerDestination())
@@ -225,8 +226,8 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 								switchToHostsInfo.get(iofSwitch.getId()).get(
 										match.getNetworkDestination()).port);
 				if (match.getDataLayerType() == Ethernet.TYPE_ARP) {
-					installRule(iofSwitch, match);
-					installRule(iofSwitch, reverseMatch);
+					installRule(iofSwitch, match, outPort);
+					installRule(iofSwitch, reverseMatch, outPort);
 				} else if (match.getDataLayerType() == Ethernet.TYPE_IPv4
 						&& match.getNetworkProtocol() == IPv4.PROTOCOL_ICMP) {
 
@@ -235,25 +236,25 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 					Color color = swtch.getColor();
 
 					if (color.equals(Color.WHITE)) {
-						installRuleForWhite(iofSwitch, match);
-						installRuleForWhite(iofSwitch, reverseMatch);
+						System.out.println("WHITE SWITCH-----");
+						installRule(iofSwitch, match, outPort);
+						installRule(iofSwitch, reverseMatch, outPort);
 					} else if (color.equals(Color.BLACK)) {
-						installRuleForBlack(iofSwitch, match);
-						installRuleForBlack(iofSwitch, reverseMatch);
-						System.out.println("black forwarding-----");
-						short outPort = switchToHostsInfo
-								.get(iofSwitch.getId()).get(
-										match.getNetworkDestination()).port;
+						System.out.println("BLACK SWITCH-----");
+
+						installRule(iofSwitch, match,
+								OFPort.OFPP_CONTROLLER.getValue());
+						installRule(iofSwitch, reverseMatch,
+								OFPort.OFPP_CONTROLLER.getValue());
+
 						this.pushPacket(iofSwitch, match, pi, outPort);
 						return Command.CONTINUE;
 
 					} else {
 						System.out
 								.println("Color not available on the node please check algorithm again");
+						System.exit(1);
 					}
-					//
-					// installRuleForWhite(iofSwitch, match, vlanId);
-					// installRuleForWhite(iofSwitch, reverseMatch, vlanId);
 				}
 			}
 		}
@@ -264,103 +265,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		return Command.CONTINUE;
 	}
 
-	private void installRuleForWhite(IOFSwitch sw, OFMatch match) {
-		short outPort = switchToHostsInfo.get(sw.getId()).get(
-				match.getNetworkDestination()).port;
-		System.out.println("WHITE Output port:" + outPort);
-		System.out.println("WHITE Vlan:" + match.getDataLayerVirtualLan());
-		// create the rule
-		OFFlowMod rule = (OFFlowMod) floodlightProvider.getOFMessageFactory()
-				.getMessage(OFType.FLOW_MOD);
-		// set the Flow Removed bit
-		rule.setFlags(OFFlowMod.OFPFF_SEND_FLOW_REM);
-		// set of actions to apply to this rule
-		// match.setDataLayerVirtualLan(VLANID_WHITE);
-		int len = 0;
-		ArrayList<OFAction> actions = new ArrayList<OFAction>();
-
-		// OFActionVirtualLanIdentifier action = new
-		// OFActionVirtualLanIdentifier();
-		// action.setVirtualLanIdentifier((short) 4);
-		// actions.add((OFAction) action);
-
-		OFAction outputTo = new OFActionOutput(outPort);
-		actions.add(outputTo);
-
-		len = OFActionOutput.MINIMUM_LENGTH;
-		// + OFActionVirtualLanIdentifier.MINIMUM_LENGTH;
-		setBasicPropForRule(rule, len);
-		match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-				.matchOn(Flag.IN_PORT).matchOn(Flag.NW_PROTO).withNwSrcMask(32)
-				.withNwDstMask(32));
-		sendFlowMod(sw, rule, actions, match);
-	}
-
-	private void installRuleForBlack(IOFSwitch sw, OFMatch match1) {
-
-		// short outPort2 = switchToHostsInfo.get(sw.getId()).get(
-		// match1.getNetworkDestination()).port;
-		// System.out.println("BLACK Output port:" + outPort2);
-		// System.out.println("BLACK Vlan:" + match1.getDataLayerVirtualLan());
-
-		// OFMatch match2 = match1.clone();
-		// match1.setDataLayerVirtualLan(VLANID_WHITE);
-		// match2.setDataLayerVirtualLan(VLANID_BLACK);
-
-		// create the rule
-		OFFlowMod rule1 = (OFFlowMod) floodlightProvider.getOFMessageFactory()
-				.getMessage(OFType.FLOW_MOD);
-		// OFFlowMod rule2 = (OFFlowMod)
-		// floodlightProvider.getOFMessageFactory()
-		// .getMessage(OFType.FLOW_MOD);
-		// set the Flow Removed bit
-		rule1.setFlags(OFFlowMod.OFPFF_SEND_FLOW_REM);
-		// rule2.setFlags(OFFlowMod.OFPFF_SEND_FLOW_REM);
-
-		// set of actions to apply to this rule
-		int len1 = 0, len2 = 0;
-		ArrayList<OFAction> actions1 = new ArrayList<OFAction>();
-		// ArrayList<OFAction> actions2 = new ArrayList<OFAction>();
-
-		// OFActionVirtualLanIdentifier action1 = new
-		// OFActionVirtualLanIdentifier();
-		// action1.setVirtualLanIdentifier((short) VLANID_BLACK);
-		// actions1.add(action1);
-
-		OFAction outputTo1 = new OFActionOutput(
-				OFPort.OFPP_CONTROLLER.getValue());
-		actions1.add(outputTo1);
-
-		// OFActionVirtualLanIdentifier action2 = new
-		// OFActionVirtualLanIdentifier();
-		// action2.setVirtualLanIdentifier((short) VLANID_WHITE);
-		// actions2.add(action2);
-
-		// OFAction outputTo2 = new OFActionOutput(outPort2);
-		// actions2.add(outputTo2);
-
-		len1 = OFActionOutput.MINIMUM_LENGTH;
-		// + OFActionVirtualLanIdentifier.MINIMUM_LENGTH;
-		// len2 = OFActionOutput.MINIMUM_LENGTH;
-		setBasicPropForRule(rule1, len1);
-		// setBasicPropForRule(rule2, len2);
-
-		match1.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-				.matchOn(Flag.IN_PORT).matchOn(Flag.NW_PROTO).withNwSrcMask(32)
-				.withNwDstMask(32));
-		// match2.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-		// .matchOn(Flag.DL_VLAN).matchOn(Flag.IN_PORT)
-		// .matchOn(Flag.NW_PROTO).withNwSrcMask(32).withNwDstMask(32));
-
-		sendFlowMod(sw, rule1, actions1, match1);
-		// sendFlowMod(sw, rule2, actions2, match2);
-	}
-
-	private void installRule(IOFSwitch sw, OFMatch match) {
-		short outPort = switchToHostsInfo.get(sw.getId()).get(
-				match.getNetworkDestination()).port;
-		System.out.println("ARP Output port:" + outPort);
-
+	private void installRule(IOFSwitch sw, OFMatch match, short outPort) {
 		// create the rule
 		OFFlowMod rule = (OFFlowMod) floodlightProvider.getOFMessageFactory()
 				.getMessage(OFType.FLOW_MOD);
@@ -376,8 +281,17 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		len = OFActionOutput.MINIMUM_LENGTH;
 		setBasicPropForRule(rule, len);
 
-		match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
-				.matchOn(Flag.IN_PORT).withNwSrcMask(32).withNwDstMask(32));
+		// If packet of type ICMP
+		if (match.getDataLayerType() == Ethernet.TYPE_IPv4) {
+			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
+					.matchOn(Flag.IN_PORT).matchOn(Flag.NW_PROTO)
+					.withNwSrcMask(32).withNwDstMask(32));
+		}
+		// If packet of type ARP
+		else {
+			match.setWildcards(Wildcards.FULL.matchOn(Flag.DL_TYPE)
+					.matchOn(Flag.IN_PORT).withNwSrcMask(32).withNwDstMask(32));
+		}
 		sendFlowMod(sw, rule, actions, match);
 	}
 
