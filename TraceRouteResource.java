@@ -1,5 +1,6 @@
 package net.floodlightcontroller.traceroute;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -10,12 +11,12 @@ import org.restlet.resource.ServerResource;
 
 public class TraceRouteResource extends ServerResource {
 	@Get("json")
-	public Map<String, List<IOFSwitch>> retrieve() {
+	public LinkedList retrieve() {
 		TraceRouteService traceRouteService = (TraceRouteService) getContext()
 				.getAttributes()
 				.get(TraceRouteService.class.getCanonicalName());
 
-		Map<String, List<IOFSwitch>> map = traceRouteService.getPath();
+		LinkedList map = traceRouteService.getPath();
 
 		return map;
 	}

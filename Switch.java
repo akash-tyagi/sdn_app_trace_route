@@ -3,7 +3,7 @@ package net.floodlightcontroller.traceroute;
 import java.util.HashMap;
 import java.util.LinkedList;
 
-public class Switch {
+class Switch {
 	public enum Color {
 		NOCOLOR, WHITE, BLACK
 	};
@@ -37,6 +37,10 @@ public class Switch {
 	@Override
 	public String toString() {
 		return ("Mac is - " + MAC);
+	}
+
+	public LinkedList getadj() {
+		return adj_object;
 	}
 
 }
