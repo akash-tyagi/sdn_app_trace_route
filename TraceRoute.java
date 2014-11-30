@@ -63,6 +63,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 	protected static Map<String, String> hostMacToSwitchMacMap;
 	protected static Map<Integer, Integer> ipToIdentification;
 	protected static Map<String, LinkedList> tracepath;
+	public static Map<String, Switch> mac_to_switch_object_copy;
 
 	@Override
 	public String getName() {
@@ -115,6 +116,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		hostMacToSwitchMacMap = new ConcurrentHashMap<String, String>();
 		restApi = context.getServiceImpl(IRestApiService.class);
 		tracepath = new ConcurrentHashMap<String, LinkedList>();
+		mac_to_switch_object_copy = new HashMap<String, Switch>();
 	}
 
 	@Override
@@ -146,6 +148,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		if (!isColoringInitialized) {
 			Graph g = new Graph();
 			g.initializeTopology();
+			mac_to_switch_object_copy = g.mac_to_switch_object;
 			TwoNodeColoring b = new TwoNodeColoring();
 			b.StartTwoNodeColoring(g);
 			isColoringInitialized = true;
@@ -237,8 +240,9 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 								outPort, eth);
 						if (path != null) {
 							for (int i = 0; i < path.size(); i++) {
-								System.out.println(path.get(i));
+								System.out.print(path.get(i) + "--->");
 							}
+							System.out.println("\n");
 						}
 						installRule(iofSwitch, match,
 								OFPort.OFPP_CONTROLLER.getValue());
@@ -358,6 +362,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 	public LinkedList<String> generatePath(IOFSwitch iofSwitch, OFPacketIn msg,
 			Short outputPort, Ethernet eth) {
 
+		System.out.print("----1-----");
 		OFPacketIn pi = (OFPacketIn) msg;
 		// parse the data in packetIn using match
 
@@ -369,11 +374,11 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		int destIP = match.getNetworkDestination();
 		int sourceIP = match.getNetworkSource();
 		Short inputPort = pi.getInPort();
-		long swId = iofSwitch.getId();
 
 		Iterator it2 = ipToSwitchId.entrySet().iterator();
 
 		Long dst_sw_id = (long) 0;
+		Long scr_sw_id = (long) 0;
 		while (it2.hasNext()) {
 			Map.Entry pairs = (Map.Entry) it2.next();
 			if (pairs.getKey().equals(destIP)) {
@@ -383,10 +388,17 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 
 		IPv4 ip = (IPv4) eth.getPayload();
 		int ident1 = ip.getIdentification();
-		String id = sourceIP + ":" + ident1;
+		// String id = sourceIP + ":" + ident1;
+
+		String id = sourceIP + "";
 
 		String dpid = HexString.toHexString(iofSwitch.getId());
 		Switch swtch = Graph.mac_to_switch_object.get(dpid);
+
+		// if(swtch.getMac().equals(scr_sw_id))
+		// {
+		// return null;
+		// }
 
 		LinkedList adj_switch = new LinkedList();
 		adj_switch = swtch.getadj();
@@ -397,47 +409,74 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 			Map mp = (Map) adj_switch.get(i);
 			Iterator it = mp.entrySet().iterator();
 			Map.Entry pairs = (Map.Entry) it.next();
-			if (inputPort == pairs.getKey()) {
+			System.out.println("Input port  " + inputPort);
+			System.out.println("value for printing " + pairs.getKey());
+			if (pairs.getKey().equals((new Integer(inputPort)))) {
+				System.out.println("I entered into the object -1  ");
+
 				f_sw_append = (Switch) pairs.getValue();
 			}
-			if (outputPort == pairs.getKey()) {
+			if (pairs.getKey().equals((new Integer(outputPort)))) {
+				System.out.println("I entered into the object -2  ");
 				f_sw_end = (Switch) pairs.getValue();
 				if (f_sw_end.getMac().equals(dst_sw_id))
 					flag = 1;
 			}
 		}
-		if (f_sw_append == null)
-			return null;
-		return traceMap(id, dpid);
-		// Color color = f_sw_append.getColor();
-		// if (color.equals(Color.WHITE)) {
-		// {
-		//
-		// return traceMap(id, dpid);
-		// }
-		// if (flag == 1) {
-		// return (traceMap(id, dpid));
-		// } else {
-		// return null;
-		// }
-		// }
-		// return null;
 
+		if (swtch.getMac().equals(scr_sw_id)) {
+			traceMap(id, dpid, null);
+			return null;
+		}
+
+		if (f_sw_append == null) {
+			System.out.println("Everytime i m coming here");
+			return null;
+
+		}
+
+		if (flag == 0) {
+			traceMap(id, dpid, f_sw_append);
+		} else {
+			if (mac_to_switch_object_copy.containsKey(dst_sw_id)) {
+				Switch sw = mac_to_switch_object_copy.get(dst_sw_id);
+				if (sw.getColor().equals(Color.BLACK)) {
+					return (traceMap(id, dpid, f_sw_append));
+					//return null;
+				}
+			}
+			LinkedList l_new = new LinkedList();
+			l_new = traceMap(id, dpid, f_sw_append);
+			l_new.add(dst_sw_id);
+			return l_new;
+		}
+		return null;
 	}
 
-	public LinkedList<String> traceMap(String id, String dpid) {
+	public LinkedList<String> traceMap(String id, String dpid, Switch neighbour) {
+
 		Iterator it = tracepath.entrySet().iterator();
+
+		// String[] parts = id.split(":");
+		// String part2 = parts[1];
+
 		while (it.hasNext()) {
 			Map.Entry pair = (Map.Entry) it.next();
 			if (pair.getKey().equals(id)) {
 				LinkedList l = (LinkedList) pair.getValue();
+				if (neighbour.getColor().equals(Color.WHITE)) {// point 3
+					System.out.println("Entering point 3");
+					l.add(neighbour.getMac());
+				}
 				l.add(dpid);
-				System.out.println("ADDED:--------------------------------"
-						+ dpid);
 				return l;
 			}
 		}
 		LinkedList<String> path = new LinkedList<String>();
+		if (neighbour != null) {// point 1
+			System.out.print("----6-----");
+			path.add(neighbour.getMac());
+		}
 		path.add(dpid);
 		tracepath.put(id, path);
 		return path;
