@@ -64,6 +64,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 	protected static Map<Integer, Integer> ipToIdentification;
 	protected static Map<String, LinkedList> tracepath;
 	public static Map<String, Switch> mac_to_switch_object_copy;
+	public long time_end = 0, time_start = 0;
 
 	@Override
 	public String getName() {
@@ -244,6 +245,7 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 					} else if (color.equals(Color.BLACK)) {
 						System.out.println("BLACK SWITCH-----");
 
+						time_start = System.currentTimeMillis();
 						installRule(iofSwitch, match,
 								OFPort.OFPP_CONTROLLER.getValue());
 						installRule(iofSwitch, reverseMatch,
@@ -254,6 +256,9 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 								outPort, eth);
 						if (path != null) {
 							System.out.print("Hurray:");
+							time_end = System.currentTimeMillis();
+							System.out.println("Time consumed"
+									+ (time_end - time_start) * 1000);
 							for (int i = 0; i < path.size(); i++) {
 
 								System.out.print(path.get(i) + "-->");
@@ -521,5 +526,4 @@ public class TraceRoute implements TraceRouteService, IOFMessageListener,
 		// TODO Auto-generated method stub
 		return null;
 	}
-
 }
